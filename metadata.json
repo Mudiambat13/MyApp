@@ -1,0 +1,6 @@
+{
+  "name": "FutaPay",
+  "description": "Plateforme de paiement mobile 100% congolaise inspirée de Wave avec frais réduits à 1%, comptes CDF & USD, et interconnexion banques locales (Rawbank, Equity BCDC, TMB) et Mobile Money (M-Pesa, Orange, Airtel).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
