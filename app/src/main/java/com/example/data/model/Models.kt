@@ -19,7 +19,8 @@ data class WalletAccount(
     val exchangeRateUsdToCdf: Double = 2850.0,
     val isCardFrozen: Boolean = false,
     val virtualCardNumber: String = "4243 •••• •••• 9081",
-    val isBalanceVisible: Boolean = true
+    val isBalanceVisible: Boolean = true,
+    val isBiometricEnabled: Boolean = true
 ) {
     fun formattedCdf(): String {
         val formatter = DecimalFormat("#,###")
@@ -144,3 +145,82 @@ data class TontineGroup(
     val nextRecipient: String,
     val hasUserPaidThisRound: Boolean
 )
+
+enum class SpendingCategory(
+    val title: String,
+    val shortName: String,
+    val colorHex: Long
+) {
+    AIRTIME(
+        title = "Crédits & Forfaits Télécom",
+        shortName = "Airtime / Forfaits",
+        colorHex = 0xFFFF9800 // Amber
+    ),
+    UTILITY_BILLS(
+        title = "Factures (Électricité & Eau)",
+        shortName = "Factures & Utilitaires",
+        colorHex = 0xFF00A86B // Futa Green
+    ),
+    TRANSFERS(
+        title = "Transferts d'argent & Tontines",
+        shortName = "Transferts",
+        colorHex = 0xFF0056D2 // Futa Blue
+    ),
+    MERCHANT(
+        title = "Achats commerces & Magasins",
+        shortName = "Commerces & Achats",
+        colorHex = 0xFF8E24AA // Purple
+    ),
+    WITHDRAWALS(
+        title = "Retraits Espèces Kiosques",
+        shortName = "Retraits",
+        colorHex = 0xFFE53935 // Red
+    ),
+    OTHER(
+        title = "Autres dépenses",
+        shortName = "Autres",
+        colorHex = 0xFF546E7A // Blue Grey
+    )
+}
+
+data class CategorySpendingSummary(
+    val category: SpendingCategory,
+    val totalCdf: Double,
+    val totalUsd: Double,
+    val transactionCount: Int,
+    val percentage: Float
+)
+
+fun Transaction.getSpendingCategory(): SpendingCategory? {
+    // Only debit/expense transactions represent monthly spending
+    return when (type) {
+        TransactionType.TRANSFER_RECEIVED,
+        TransactionType.BANK_TOPUP,
+        TransactionType.CURRENCY_EXCHANGE -> null
+
+        TransactionType.TRANSFER_SENT,
+        TransactionType.TONTINE_CONTRIBUTION -> SpendingCategory.TRANSFERS
+
+        TransactionType.MERCHANT_PAY -> SpendingCategory.MERCHANT
+
+        TransactionType.BANK_WITHDRAWAL -> SpendingCategory.WITHDRAWALS
+
+        TransactionType.BILL_PAYMENT -> {
+            val lower = (title + " " + (partnerName ?: "") + " " + (notes ?: "")).lowercase()
+            if (lower.contains("airtime") ||
+                lower.contains("crédit") ||
+                lower.contains("credit") ||
+                lower.contains("forfait") ||
+                lower.contains("airtel") ||
+                lower.contains("vodacom") ||
+                lower.contains("orange") ||
+                lower.contains("africell") ||
+                lower.contains("data")
+            ) {
+                SpendingCategory.AIRTIME
+            } else {
+                SpendingCategory.UTILITY_BILLS
+            }
+        }
+    }
+}

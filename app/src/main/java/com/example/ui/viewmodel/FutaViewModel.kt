@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.AgentPoint
 import com.example.data.model.BillProvider
+import com.example.data.model.CategorySpendingSummary
 import com.example.data.model.Currency
 import com.example.data.model.LinkedAccount
 import com.example.data.model.LinkedCategory
+import com.example.data.model.SpendingCategory
 import com.example.data.model.TontineGroup
 import com.example.data.model.Transaction
 import com.example.data.model.WalletAccount
@@ -28,7 +30,8 @@ enum class FutaScreen {
     BILLS,
     AGENTS,
     SCAN_QR,
-    TONTINE
+    TONTINE,
+    PROFILE
 }
 
 data class WithdrawalCodeData(
@@ -41,12 +44,14 @@ data class WithdrawalCodeData(
 data class FutaUiState(
     val currentScreen: FutaScreen = FutaScreen.HOME,
     val activeCurrency: Currency = Currency.CDF,
+    val isDarkMode: Boolean = false,
     val selectedTransaction: Transaction? = null,
     val activeWithdrawalCode: WithdrawalCodeData? = null,
     val showSavingsCalculator: Boolean = false,
     val showExchangeModal: Boolean = false,
     val showLinkBankModal: Boolean = false,
     val showQrCardModal: Boolean = false,
+    val showSecuritySettings: Boolean = false,
     val notificationMessage: String? = null
 )
 
@@ -61,8 +66,42 @@ class FutaViewModel(
     val billProviders: StateFlow<List<BillProvider>> = repository.billProviders
     val tontineGroups: StateFlow<List<TontineGroup>> = repository.tontineGroups
 
+    private val _selectedSpendingMonth = MutableStateFlow(0) // 0 = Ce mois, 1 = Mois dernier, 2 = Il y a 2 mois
+    val selectedSpendingMonth: StateFlow<Int> = _selectedSpendingMonth.asStateFlow()
+
+    private val _selectedSpendingCategory = MutableStateFlow<SpendingCategory?>(null)
+    val selectedSpendingCategory: StateFlow<SpendingCategory?> = _selectedSpendingCategory.asStateFlow()
+
+    val spendingBreakdown: StateFlow<List<CategorySpendingSummary>> = combine(
+        transactions,
+        _selectedSpendingMonth,
+        account
+    ) { _, monthOffset, _ ->
+        repository.getMonthlySpending(monthOffset)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val spendingTransactions: StateFlow<List<Transaction>> = combine(
+        transactions,
+        _selectedSpendingCategory,
+        _selectedSpendingMonth
+    ) { _, cat, monthOffset ->
+        repository.getTransactionsForCategory(cat, monthOffset)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _uiState = MutableStateFlow(FutaUiState())
     val uiState: StateFlow<FutaUiState> = _uiState.asStateFlow()
+
+    fun setSpendingMonth(offset: Int) {
+        _selectedSpendingMonth.value = offset
+    }
+
+    fun setSelectedSpendingCategory(category: SpendingCategory?) {
+        _selectedSpendingCategory.value = category
+    }
+
+    fun clearSelectedSpendingCategory() {
+        _selectedSpendingCategory.value = null
+    }
 
     fun navigateTo(screen: FutaScreen) {
         _uiState.update { it.copy(currentScreen = screen) }
@@ -70,6 +109,14 @@ class FutaViewModel(
 
     fun setActiveCurrency(currency: Currency) {
         _uiState.update { it.copy(activeCurrency = currency) }
+    }
+
+    fun toggleDarkMode() {
+        _uiState.update { it.copy(isDarkMode = !it.isDarkMode) }
+    }
+
+    fun setDarkMode(enabled: Boolean) {
+        _uiState.update { it.copy(isDarkMode = enabled) }
     }
 
     fun toggleBalanceVisibility() {
@@ -113,6 +160,23 @@ class FutaViewModel(
 
     fun closeQrCardModal() {
         _uiState.update { it.copy(showQrCardModal = false) }
+    }
+
+    fun openSecuritySettings() {
+        _uiState.update { it.copy(showSecuritySettings = true) }
+    }
+
+    fun closeSecuritySettings() {
+        _uiState.update { it.copy(showSecuritySettings = false) }
+    }
+
+    fun toggleBiometric() {
+        repository.toggleBiometric()
+        val isEnabled = repository.account.value.isBiometricEnabled
+        setNotification(
+            if (isEnabled) "Authentification biométrique activée (Empreinte / Face Unlock)"
+            else "Authentification biométrique désactivée (Code PIN uniquement)"
+        )
     }
 
     fun showTransactionReceipt(transaction: Transaction) {

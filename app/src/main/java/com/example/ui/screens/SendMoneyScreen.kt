@@ -24,10 +24,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
+import com.example.util.BiometricAuthManager
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -462,9 +466,39 @@ fun SendMoneyScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            val context = LocalContext.current
+            val activity = context as? FragmentActivity
+
             Button(
                 onClick = {
-                    showPinDialog = true
+                    if (account.isBiometricEnabled && activity != null && BiometricAuthManager.isBiometricSupported(context)) {
+                        BiometricAuthManager.authenticate(
+                            activity = activity,
+                            title = "Sécurité FutaPay - Transfert",
+                            subtitle = "Confirmez l'envoi de $prefix${df.format(amountValue)}$suffix à ${recipientName.ifBlank { recipientPhone }}",
+                            negativeButtonText = "Utiliser mon code PIN",
+                            onSuccess = {
+                                val name = recipientName.ifBlank { "Contact Futa" }
+                                viewModel.sendMoney(
+                                    recipientName = name,
+                                    recipientPhone = recipientPhone,
+                                    amount = amountValue,
+                                    currency = selectedCurrency,
+                                    notes = noteText.ifBlank { null }
+                                )
+                            },
+                            onNegativeButtonOrFallback = {
+                                showPinDialog = true
+                            },
+                            onError = { _, _ ->
+                                showPinDialog = true
+                            }
+                        )
+                    } else {
+                        showPinDialog = true
+                    }
                 },
                 enabled = isAmountValid,
                 modifier = Modifier
@@ -474,19 +508,32 @@ fun SendMoneyScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = FutaPrimary)
             ) {
-                Text(
-                    text = if (isAmountValid) "Confirmer le transfert" else if (amountValue > availableBalance) "Solde insuffisant" else "Remplir tous les champs",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (account.isBiometricEnabled) {
+                        Icon(
+                            imageVector = Icons.Default.Fingerprint,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = if (isAmountValid) "Confirmer le transfert" else if (amountValue > availableBalance) "Solde insuffisant" else "Remplir tous les champs",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
-    // 4-Digit Security PIN Dialog (Wave style safety confirmation)
+    // 4-Digit Security PIN Dialog (Wave style safety confirmation with biometric option)
     if (showPinDialog) {
+        val context = LocalContext.current
+        val activity = context as? FragmentActivity
+
         AlertDialog(
             onDismissRequest = {
                 showPinDialog = false
@@ -531,6 +578,43 @@ fun SendMoneyScreen(
                         modifier = Modifier.testTag("send_pin_input"),
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    if (account.isBiometricEnabled && activity != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        OutlinedButton(
+                            onClick = {
+                                showPinDialog = false
+                                BiometricAuthManager.authenticate(
+                                    activity = activity,
+                                    title = "Sécurité FutaPay - Transfert",
+                                    subtitle = "Confirmez l'envoi de $prefix${df.format(amountValue)}$suffix",
+                                    negativeButtonText = "Annuler",
+                                    onSuccess = {
+                                        val name = recipientName.ifBlank { "Contact Futa" }
+                                        viewModel.sendMoney(
+                                            recipientName = name,
+                                            recipientPhone = recipientPhone,
+                                            amount = amountValue,
+                                            currency = selectedCurrency,
+                                            notes = noteText.ifBlank { null }
+                                        )
+                                    },
+                                    onNegativeButtonOrFallback = {
+                                        showPinDialog = true
+                                    }
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Fingerprint,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "Ou valider par Empreinte / Visage", fontSize = 12.sp)
+                        }
+                    }
                 }
             },
             confirmButton = {

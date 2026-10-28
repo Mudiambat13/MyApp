@@ -2,14 +2,17 @@ package com.example.data.repository
 
 import com.example.data.model.AgentPoint
 import com.example.data.model.BillProvider
+import com.example.data.model.CategorySpendingSummary
 import com.example.data.model.Currency
 import com.example.data.model.LinkedAccount
 import com.example.data.model.LinkedCategory
+import com.example.data.model.SpendingCategory
 import com.example.data.model.TontineGroup
 import com.example.data.model.Transaction
 import com.example.data.model.TransactionStatus
 import com.example.data.model.TransactionType
 import com.example.data.model.WalletAccount
+import com.example.data.model.getSpendingCategory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,6 +80,77 @@ class FutaRepository {
 
     fun toggleCardLock() {
         _account.update { it.copy(isCardFrozen = !it.isCardFrozen) }
+    }
+
+    fun toggleBiometric() {
+        _account.update { it.copy(isBiometricEnabled = !it.isBiometricEnabled) }
+    }
+
+    fun getMonthlySpending(
+        monthOffset: Int = 0
+    ): List<CategorySpendingSummary> {
+        val now = System.currentTimeMillis()
+        val day = 24 * 3600 * 1000L
+        val rate = _account.value.exchangeRateUsdToCdf
+
+        val (minTimestamp, maxTimestamp) = when (monthOffset) {
+            0 -> Pair(now - 30 * day, now + 1 * day) // Ce mois (30 derniers jours)
+            1 -> Pair(now - 60 * day, now - 30 * day) // Mois dernier
+            else -> Pair(now - 90 * day, now - 60 * day) // Il y a 2 mois
+        }
+
+        val eligibleTxs = _transactions.value.filter { tx ->
+            tx.timestamp in minTimestamp..maxTimestamp && tx.getSpendingCategory() != null
+        }
+
+        val totalSpendingCdf = eligibleTxs.sumOf { tx ->
+            if (tx.currency == Currency.CDF) tx.amount else tx.amount * rate
+        }
+
+        if (totalSpendingCdf <= 0.0) {
+            return emptyList()
+        }
+
+        val grouped = eligibleTxs.groupBy { it.getSpendingCategory()!! }
+
+        return grouped.map { (cat, txs) ->
+            val catTotalCdf = txs.sumOf { tx ->
+                if (tx.currency == Currency.CDF) tx.amount else tx.amount * rate
+            }
+            val catTotalUsd = catTotalCdf / rate
+            val percentage = ((catTotalCdf / totalSpendingCdf) * 100f).toFloat()
+
+            CategorySpendingSummary(
+                category = cat,
+                totalCdf = catTotalCdf,
+                totalUsd = catTotalUsd,
+                transactionCount = txs.size,
+                percentage = percentage
+            )
+        }.sortedByDescending { it.totalCdf }
+    }
+
+    fun getTransactionsForCategory(
+        category: SpendingCategory?,
+        monthOffset: Int = 0
+    ): List<Transaction> {
+        val now = System.currentTimeMillis()
+        val day = 24 * 3600 * 1000L
+        val (minTimestamp, maxTimestamp) = when (monthOffset) {
+            0 -> Pair(now - 30 * day, now + 1 * day)
+            1 -> Pair(now - 60 * day, now - 30 * day)
+            else -> Pair(now - 90 * day, now - 60 * day)
+        }
+
+        return _transactions.value.filter { tx ->
+            val isWithinWindow = tx.timestamp in minTimestamp..maxTimestamp
+            val txCat = tx.getSpendingCategory()
+            if (category == null) {
+                isWithinWindow && txCat != null
+            } else {
+                isWithinWindow && txCat == category
+            }
+        }
     }
 
     fun sendMoney(
@@ -446,25 +520,177 @@ class FutaRepository {
         val day = 24 * hour
 
         return listOf(
+            // --- Current Month (Ce mois - Octobre) ---
+            // Airtime (Crédits & Forfaits)
             Transaction(
-                id = "tx-1",
+                id = "tx-airtime-1",
+                title = "Forfait Internet Airtel 10 Go",
+                subtitle = "Recharge Data +243 99 821 4590",
+                amount = 28500.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 3 * hour,
+                reference = "FT-AIR-892104",
+                partnerName = "Airtel RDC Airtime",
+                notes = "Forfait 30 Jours 10 Go 4G LTE"
+            ),
+            Transaction(
+                id = "tx-airtime-2",
+                title = "Crédit d'appel Vodacom",
+                subtitle = "Airtime direct +243 81 294 8831",
+                amount = 5.0,
+                currency = Currency.USD,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 2 * day,
+                reference = "FT-AIR-551920",
+                partnerName = "Vodacom RDC Airtime",
+                notes = "Recharge crédit d'appel"
+            ),
+            Transaction(
+                id = "tx-airtime-3",
+                title = "Forfait Nuit Orange 5 Go",
+                subtitle = "Recharge Data +243 89 554 1120",
+                amount = 5700.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 7 * day,
+                reference = "FT-AIR-220194",
+                partnerName = "Orange RDC Airtime",
+                notes = "Pass Nuit 5 Go"
+            ),
+
+            // Utility Bills (Factures d'Énergie & Eau & TV)
+            Transaction(
+                id = "tx-bill-1",
+                title = "SNEL CashPower - Électricité",
+                subtitle = "Compteur #014493821",
+                amount = 35000.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 4 * day,
+                reference = "FT-FAC-401928",
+                partnerName = "SNEL CashPower",
+                notes = "Token: 8492 1049 3810 5920 1842"
+            ),
+            Transaction(
+                id = "tx-bill-2",
+                title = "REGIDESO - Facture d'eau",
+                subtitle = "Réf Client RGD-99384-KIN",
+                amount = 25000.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 10 * day,
+                reference = "FT-FAC-192847",
+                partnerName = "REGIDESO",
+                notes = "Facture Eau Gombe Sept/Oct"
+            ),
+            Transaction(
+                id = "tx-bill-3",
+                title = "CANAL+ Bouquet Évasion",
+                subtitle = "Carte Décodeur 1449 2819 04",
+                amount = 20.0,
+                currency = Currency.USD,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 14 * day,
+                reference = "FT-FAC-773918",
+                partnerName = "CANAL+ RDC",
+                notes = "Abonnement 30 jours"
+            ),
+
+            // Transfers (Envois d'argent P2P & Tontines)
+            Transaction(
+                id = "tx-trf-1",
                 title = "Envoi à Grace Mwamba",
                 subtitle = "+243 81 294 8831",
                 amount = 45000.0,
                 currency = Currency.CDF,
                 fee = 450.0,
                 type = TransactionType.TRANSFER_SENT,
-                timestamp = now - 2 * hour,
+                timestamp = now - 1 * day,
                 reference = "FT-TRF-902314",
                 partnerName = "Futa Transfert",
                 recipientPhone = "+243 81 294 8831",
-                notes = "Achat fournitures scolaires"
+                notes = "Frais scolaires"
             ),
             Transaction(
-                id = "tx-2",
+                id = "tx-trf-2",
+                title = "Envoi à Patrick Tshisekedi",
+                subtitle = "+243 82 401 9283",
+                amount = 25.0,
+                currency = Currency.USD,
+                fee = 0.25,
+                type = TransactionType.TRANSFER_SENT,
+                timestamp = now - 5 * day,
+                reference = "FT-TRF-110294",
+                partnerName = "Futa Transfert",
+                recipientPhone = "+243 82 401 9283",
+                notes = "Remboursement courses"
+            ),
+            Transaction(
+                id = "tx-trf-3",
+                title = "Cotisation Tontine Kitemo",
+                subtitle = "Tour 3 pour Maman Rachel",
+                amount = 50000.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.TONTINE_CONTRIBUTION,
+                timestamp = now - 8 * day,
+                reference = "FT-TNT-492019",
+                partnerName = "Tontine Kitemo"
+            ),
+
+            // Merchant Purchases (Achats & Commerces)
+            Transaction(
+                id = "tx-mer-1",
+                title = "Kin Mart Supermarché",
+                subtitle = "Succursale Gombe",
+                amount = 28500.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.MERCHANT_PAY,
+                timestamp = now - 6 * day,
+                reference = "FT-MER-773910",
+                partnerName = "Kin Mart Gombe"
+            ),
+            Transaction(
+                id = "tx-mer-2",
+                title = "Pharmacie Moderne de Kinshasa",
+                subtitle = "Avenue De la Paix",
+                amount = 18000.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.MERCHANT_PAY,
+                timestamp = now - 12 * day,
+                reference = "FT-MER-392019",
+                partnerName = "Pharmacie Moderne"
+            ),
+
+            // Cash Withdrawals (Retraits)
+            Transaction(
+                id = "tx-wdr-1",
+                title = "Retrait Kiosque Futa Express",
+                subtitle = "Agent Gombe Boulevard 30 Juin",
+                amount = 40000.0,
+                currency = Currency.CDF,
+                fee = 400.0,
+                type = TransactionType.BANK_WITHDRAWAL,
+                timestamp = now - 9 * day,
+                reference = "FT-WDR-501928",
+                partnerName = "Kiosque Futa Gombe"
+            ),
+
+            // Inflows (Not counted in spending chart, but visible in transaction history)
+            Transaction(
+                id = "tx-in-1",
                 title = "Recharge depuis Rawbank Illicocash",
                 subtitle = "Compte *4819",
-                amount = 50.0,
+                amount = 100.0,
                 currency = Currency.USD,
                 fee = 0.0,
                 type = TransactionType.BANK_TOPUP,
@@ -473,41 +699,66 @@ class FutaRepository {
                 partnerName = "Rawbank Illicocash"
             ),
             Transaction(
-                id = "tx-3",
-                title = "Paiement Kin Mart Supermarché",
-                subtitle = "Succursale Gombe",
-                amount = 28500.0,
-                currency = Currency.CDF,
-                fee = 0.0,
-                type = TransactionType.MERCHANT_PAY,
-                timestamp = now - 1 * day,
-                reference = "FT-MER-773910",
-                partnerName = "Kin Mart"
-            ),
-            Transaction(
-                id = "tx-4",
+                id = "tx-in-2",
                 title = "Reçu de Dieudonné Kabeya",
                 subtitle = "Transfert instantané Futa",
                 amount = 120000.0,
                 currency = Currency.CDF,
                 fee = 0.0,
                 type = TransactionType.TRANSFER_RECEIVED,
-                timestamp = now - 2 * day,
+                timestamp = now - 11 * day,
                 reference = "FT-REC-654812",
                 partnerName = "Futa Transfert"
             ),
+
+            // --- Previous Month (Mois dernier - Septembre) ---
             Transaction(
-                id = "tx-5",
+                id = "tx-prev-1",
+                title = "Forfait Internet Airtel 15 Go",
+                subtitle = "Recharge Data Mensuelle",
+                amount = 42000.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.BILL_PAYMENT,
+                timestamp = now - 35 * day,
+                reference = "FT-AIR-001923",
+                partnerName = "Airtel RDC Airtime"
+            ),
+            Transaction(
+                id = "tx-prev-2",
                 title = "SNEL CashPower - Électricité",
                 subtitle = "Compteur #014493821",
                 amount = 30000.0,
                 currency = Currency.CDF,
                 fee = 0.0,
                 type = TransactionType.BILL_PAYMENT,
-                timestamp = now - 3 * day,
-                reference = "FT-FAC-401928",
-                partnerName = "SNEL CashPower",
-                notes = "Token: 8492 1049 3810 5920 1842"
+                timestamp = now - 38 * day,
+                reference = "FT-FAC-881920",
+                partnerName = "SNEL CashPower"
+            ),
+            Transaction(
+                id = "tx-prev-3",
+                title = "Envoi à Patrick Tshisekedi",
+                subtitle = "+243 82 401 9283",
+                amount = 60000.0,
+                currency = Currency.CDF,
+                fee = 600.0,
+                type = TransactionType.TRANSFER_SENT,
+                timestamp = now - 42 * day,
+                reference = "FT-TRF-667192",
+                partnerName = "Futa Transfert"
+            ),
+            Transaction(
+                id = "tx-prev-4",
+                title = "Kin Mart Supermarché",
+                subtitle = "Courses alimentaires",
+                amount = 34000.0,
+                currency = Currency.CDF,
+                fee = 0.0,
+                type = TransactionType.MERCHANT_PAY,
+                timestamp = now - 45 * day,
+                reference = "FT-MER-994012",
+                partnerName = "Kin Mart Gombe"
             )
         )
     }
@@ -661,13 +912,33 @@ class FutaRepository {
                 suggestedAmountsUsd = listOf(6.0, 12.0)
             ),
             BillProvider(
-                id = "prov-telecom",
-                name = "Recharge Crédit & Forfaits Internet",
+                id = "prov-airtel",
+                name = "Airtel RDC (Crédit & Forfaits)",
                 category = "Télécoms",
-                description = "Vodacom, Airtel, Orange, Africell en RDC sans surcoût",
-                inputPrompt = "Numéro de téléphone à recharger",
-                inputPlaceholder = "+243 ...",
-                suggestedAmountsCdf = listOf(2000.0, 5000.0, 10000.0, 20000.0),
+                description = "Recharge crédit d'appel et forfaits internet 4G LTE sans surcoût",
+                inputPrompt = "Numéro Airtel à recharger",
+                inputPlaceholder = "ex: 0998214590",
+                suggestedAmountsCdf = listOf(2850.0, 5700.0, 14250.0, 28500.0),
+                suggestedAmountsUsd = listOf(1.0, 2.0, 5.0, 10.0)
+            ),
+            BillProvider(
+                id = "prov-vodacom",
+                name = "Vodacom RDC (Airtime & Pass)",
+                category = "Télécoms",
+                description = "Recharge crédit d'appel et forfaits M-Pesa / Vodacom",
+                inputPrompt = "Numéro Vodacom à recharger",
+                inputPlaceholder = "ex: 0812948831",
+                suggestedAmountsCdf = listOf(2850.0, 5700.0, 14250.0, 28500.0),
+                suggestedAmountsUsd = listOf(1.0, 2.0, 5.0, 10.0)
+            ),
+            BillProvider(
+                id = "prov-orange",
+                name = "Orange RDC (Crédit & Pass Data)",
+                category = "Télécoms",
+                description = "Recharge directe forfaits internet et crédit Orange",
+                inputPrompt = "Numéro Orange à recharger",
+                inputPlaceholder = "ex: 0895541120",
+                suggestedAmountsCdf = listOf(2850.0, 5700.0, 14250.0, 28500.0),
                 suggestedAmountsUsd = listOf(1.0, 2.0, 5.0, 10.0)
             )
         )

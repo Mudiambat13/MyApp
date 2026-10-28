@@ -186,6 +186,17 @@ fun WaveCard(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
+                        val mockRate = account.exchangeRateUsdToCdf
+                        val dfCdf = java.text.DecimalFormat("#,###")
+                        val dfUsd = java.text.DecimalFormat("#,##0.00")
+                        val equivalentText = if (activeCurrency == Currency.CDF) {
+                            val eqUsd = account.cdfBalance / mockRate
+                            "≈ $${dfUsd.format(eqUsd)} USD (Taux : 1 USD = ${dfCdf.format(mockRate)} FC)"
+                        } else {
+                            val eqCdf = account.usdBalance * mockRate
+                            "≈ ${dfCdf.format(eqCdf)} FC (Taux : 1 USD = ${dfCdf.format(mockRate)} FC)"
+                        }
+
                         if (account.isBalanceVisible) {
                             Text(
                                 text = if (activeCurrency == Currency.CDF) account.formattedCdf() else account.formattedUsd(),
@@ -194,6 +205,13 @@ fun WaveCard(
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = (-0.5).sp,
                                 modifier = Modifier.testTag("balance_text")
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = equivalentText,
+                                color = Color.White.copy(alpha = 0.75f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         } else {
                             Text(
@@ -206,13 +224,16 @@ fun WaveCard(
                         }
                     }
 
-                    // Taux du jour & Instant Exchange CTA
+                    // Toggle Button to switch CDF ⇄ USD view based on mock exchange rate
                     Surface(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { onOpenExchange() }
-                            .testTag("exchange_rate_button"),
-                        color = Color.White.copy(alpha = 0.12f),
+                            .clickable {
+                                val next = if (activeCurrency == Currency.CDF) Currency.USD else Currency.CDF
+                                onCurrencyChange(next)
+                            }
+                            .testTag("balance_currency_toggle"),
+                        color = Color.White.copy(alpha = 0.16f),
                         contentColor = Color.White
                     ) {
                         Column(
@@ -222,22 +243,22 @@ fun WaveCard(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = Icons.Default.CurrencyExchange,
-                                    contentDescription = "Changer devises",
+                                    contentDescription = "Basculer devise",
                                     modifier = Modifier.size(14.dp),
                                     tint = FutaCyan
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "1$ = 2850 FC",
+                                    text = if (activeCurrency == Currency.CDF) "Vers USD" else "Vers CDF",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = FutaCyan
+                                    color = Color.White
                                 )
                             }
                             Text(
-                                text = "Convertir 0%",
-                                fontSize = 10.sp,
-                                color = Color.White.copy(alpha = 0.8f)
+                                text = "1$ = 2 850 FC",
+                                fontSize = 9.sp,
+                                color = FutaCyan
                             )
                         }
                     }

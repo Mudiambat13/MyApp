@@ -2,7 +2,6 @@ package com.example
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
@@ -19,15 +18,16 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -49,33 +49,37 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.CurrencyExchangeDialog
 import com.example.ui.components.QrCardModal
 import com.example.ui.components.ReceiptDialog
 import com.example.ui.components.SavingsCalculatorDialog
+import com.example.ui.components.SecuritySettingsDialog
 import com.example.ui.screens.AgentsMapScreen
 import com.example.ui.screens.BankIntegrationScreen
 import com.example.ui.screens.BillsScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MerchantQrScreen
+import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.SendMoneyScreen
 import com.example.ui.screens.TontineScreen
-import com.example.ui.theme.FutaBackground
 import com.example.ui.theme.FutaPrimary
-import com.example.ui.theme.FutaTextPrimary
-import com.example.ui.theme.FutaTextSecondary
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.FutaScreen
 import com.example.ui.viewmodel.FutaViewModel
+import com.example.util.BiometricAuthManager
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
-                FutaApp()
+            val viewModel: FutaViewModel = viewModel()
+            val uiState by viewModel.uiState.collectAsState()
+
+            MyApplicationTheme(darkTheme = uiState.isDarkMode) {
+                FutaApp(viewModel = viewModel)
             }
         }
     }
@@ -83,7 +87,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun FutaApp(
-    viewModel: FutaViewModel = viewModel()
+    viewModel: FutaViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val account by viewModel.account.collectAsState()
@@ -102,9 +106,9 @@ fun FutaApp(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
             NavigationBar(
-                containerColor = Color.White,
-                contentColor = FutaTextPrimary,
-                tonalElevation = 8.dp,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 6.dp,
                 modifier = Modifier
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .testTag("main_navigation_bar")
@@ -126,8 +130,8 @@ fun FutaApp(
                         selectedIconColor = FutaPrimary,
                         selectedTextColor = FutaPrimary,
                         indicatorColor = FutaPrimary.copy(alpha = 0.12f),
-                        unselectedIconColor = FutaTextSecondary,
-                        unselectedTextColor = FutaTextSecondary
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     modifier = Modifier.testTag("nav_home")
                 )
@@ -142,13 +146,13 @@ fun FutaApp(
                             modifier = Modifier.size(22.dp)
                         )
                     },
-                    label = { Text("Envoyer (1%)", fontSize = 11.sp, fontWeight = if (currentScreen == FutaScreen.SEND) FontWeight.Bold else FontWeight.Normal) },
+                    label = { Text("Envoyer", fontSize = 11.sp, fontWeight = if (currentScreen == FutaScreen.SEND) FontWeight.Bold else FontWeight.Normal) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = FutaPrimary,
                         selectedTextColor = FutaPrimary,
                         indicatorColor = FutaPrimary.copy(alpha = 0.12f),
-                        unselectedIconColor = FutaTextSecondary,
-                        unselectedTextColor = FutaTextSecondary
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     modifier = Modifier.testTag("nav_send")
                 )
@@ -163,13 +167,13 @@ fun FutaApp(
                             modifier = Modifier.size(22.dp)
                         )
                     },
-                    label = { Text("Banques RDC", fontSize = 11.sp, fontWeight = if (currentScreen == FutaScreen.BANKS) FontWeight.Bold else FontWeight.Normal) },
+                    label = { Text("Banques", fontSize = 11.sp, fontWeight = if (currentScreen == FutaScreen.BANKS) FontWeight.Bold else FontWeight.Normal) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = FutaPrimary,
                         selectedTextColor = FutaPrimary,
                         indicatorColor = FutaPrimary.copy(alpha = 0.12f),
-                        unselectedIconColor = FutaTextSecondary,
-                        unselectedTextColor = FutaTextSecondary
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     modifier = Modifier.testTag("nav_banks")
                 )
@@ -189,35 +193,35 @@ fun FutaApp(
                         selectedIconColor = FutaPrimary,
                         selectedTextColor = FutaPrimary,
                         indicatorColor = FutaPrimary.copy(alpha = 0.12f),
-                        unselectedIconColor = FutaTextSecondary,
-                        unselectedTextColor = FutaTextSecondary
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     modifier = Modifier.testTag("nav_bills")
                 )
 
                 NavigationBarItem(
-                    selected = currentScreen == FutaScreen.AGENTS,
-                    onClick = { viewModel.navigateTo(FutaScreen.AGENTS) },
+                    selected = currentScreen == FutaScreen.PROFILE,
+                    onClick = { viewModel.navigateTo(FutaScreen.PROFILE) },
                     icon = {
                         Icon(
-                            imageVector = if (currentScreen == FutaScreen.AGENTS) Icons.Filled.LocationOn else Icons.Outlined.LocationOn,
-                            contentDescription = "Agents",
+                            imageVector = if (currentScreen == FutaScreen.PROFILE) Icons.Filled.Person else Icons.Outlined.Person,
+                            contentDescription = "Profil",
                             modifier = Modifier.size(22.dp)
                         )
                     },
-                    label = { Text("Agents", fontSize = 11.sp, fontWeight = if (currentScreen == FutaScreen.AGENTS) FontWeight.Bold else FontWeight.Normal) },
+                    label = { Text("Profil", fontSize = 11.sp, fontWeight = if (currentScreen == FutaScreen.PROFILE) FontWeight.Bold else FontWeight.Normal) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = FutaPrimary,
                         selectedTextColor = FutaPrimary,
                         indicatorColor = FutaPrimary.copy(alpha = 0.12f),
-                        unselectedIconColor = FutaTextSecondary,
-                        unselectedTextColor = FutaTextSecondary
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
-                    modifier = Modifier.testTag("nav_agents")
+                    modifier = Modifier.testTag("nav_profile")
                 )
             }
         },
-        containerColor = FutaBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
         Box(
@@ -238,6 +242,7 @@ fun FutaApp(
                     FutaScreen.AGENTS -> AgentsMapScreen(viewModel = viewModel)
                     FutaScreen.SCAN_QR -> MerchantQrScreen(viewModel = viewModel)
                     FutaScreen.TONTINE -> TontineScreen(viewModel = viewModel)
+                    FutaScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
                 }
             }
         }
@@ -285,6 +290,37 @@ fun FutaApp(
                 clipboardManager.setText(AnnotatedString(account.futaId))
                 Toast.makeText(context, "ID Futa ${account.futaId} copié !", Toast.LENGTH_SHORT).show()
             }
+        )
+    }
+
+    // Modal: Biometric & Security Settings
+    if (uiState.showSecuritySettings) {
+        SecuritySettingsDialog(
+            account = account,
+            onToggleBiometric = { viewModel.toggleBiometric() },
+            onTestBiometric = {
+                val activity = context as? FragmentActivity
+                if (activity != null) {
+                    BiometricAuthManager.authenticate(
+                        activity = activity,
+                        title = "Test Biométrique FutaPay",
+                        subtitle = "Confirmez votre empreinte ou votre visage",
+                        negativeButtonText = "Annuler",
+                        onSuccess = {
+                            Toast.makeText(context, "Authentification biométrique réussie avec succès !", Toast.LENGTH_SHORT).show()
+                        },
+                        onError = { code, msg ->
+                            Toast.makeText(context, "Authentification ($code) : $msg", Toast.LENGTH_SHORT).show()
+                        },
+                        onNegativeButtonOrFallback = {
+                            Toast.makeText(context, "Test annulé par l'utilisateur", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                } else {
+                    Toast.makeText(context, "Activité non compatible", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { viewModel.closeSecuritySettings() }
         )
     }
 }

@@ -28,7 +28,11 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
+import com.example.util.BiometricAuthManager
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -497,14 +501,33 @@ fun BankIntegrationScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                val context = LocalContext.current
+                val activity = context as? FragmentActivity
+
                 Button(
                     onClick = {
-                        if (isDeposit) {
-                            viewModel.depositFromLinked(targetAccount, amountNum, actionCurrency)
+                        if (!isDeposit && account.isBiometricEnabled && activity != null && BiometricAuthManager.isBiometricSupported(context)) {
+                            BiometricAuthManager.authenticate(
+                                activity = activity,
+                                title = "Sécurité Virement - FutaPay",
+                                subtitle = "Confirmez le virement vers ${targetAccount.providerName}",
+                                negativeButtonText = "Annuler",
+                                onSuccess = {
+                                    viewModel.withdrawToLinked(targetAccount, amountNum, actionCurrency)
+                                    activeActionAccount = null
+                                },
+                                onNegativeButtonOrFallback = {
+                                    // Keep sheet open
+                                }
+                            )
                         } else {
-                            viewModel.withdrawToLinked(targetAccount, amountNum, actionCurrency)
+                            if (isDeposit) {
+                                viewModel.depositFromLinked(targetAccount, amountNum, actionCurrency)
+                            } else {
+                                viewModel.withdrawToLinked(targetAccount, amountNum, actionCurrency)
+                            }
+                            activeActionAccount = null
                         }
-                        activeActionAccount = null
                     },
                     enabled = isValid,
                     modifier = Modifier
@@ -516,11 +539,21 @@ fun BankIntegrationScreen(
                         containerColor = if (isDeposit) FutaGreenDark else FutaPrimary
                     )
                 ) {
-                    Text(
-                        text = if (isDeposit) "Valider la recharge immédiate" else "Confirmer le virement",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!isDeposit && account.isBiometricEnabled) {
+                            Icon(
+                                imageVector = Icons.Default.Fingerprint,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = if (isDeposit) "Valider la recharge immédiate" else "Confirmer le virement",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
